@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Catan Counter",
+  "version": "1.0",
+  "description": "Track opponent's resources in Colonist.io",
+  "content_scripts": [
+    {
+      "matches": ["https://colonist.io/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {}
+}
