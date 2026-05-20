@@ -572,25 +572,19 @@
     const trackedRes = RESOURCES.reduce((sum, r) => sum + p.resources[r], 0) + p.unknownResources;
     const trackedDev = p.devCards;
 
-    // Correct resource count
-    if (domRes >= 0 && domRes !== trackedRes) {
-      const diff = domRes - trackedRes;
-      if (diff > 0) {
-        // We undercounted — add unknowns
-        p.unknownResources += diff;
-      } else {
-        // We overcounted — remove from unknowns first, then known
-        let toRemove = -diff;
-        while (toRemove > 0 && p.unknownResources > 0) { p.unknownResources--; toRemove--; }
-        while (toRemove > 0) {
-          let best = null, bestCount = 0;
-          for (const r of RESOURCES) {
-            if (p.resources[r] > bestCount) { best = r; bestCount = p.resources[r]; }
-          }
-          if (!best) break;
-          p.resources[best]--;
-          toRemove--;
+    // Correct resource count — only adjust when we overcounted (DOM < tracked)
+    // Undercounting (DOM > tracked) is handled by feed message parsing
+    if (domRes >= 0 && trackedRes > domRes) {
+      let toRemove = trackedRes - domRes;
+      while (toRemove > 0 && p.unknownResources > 0) { p.unknownResources--; toRemove--; }
+      while (toRemove > 0) {
+        let best = null, bestCount = 0;
+        for (const r of RESOURCES) {
+          if (p.resources[r] > bestCount) { best = r; bestCount = p.resources[r]; }
         }
+        if (!best) break;
+        p.resources[best]--;
+        toRemove--;
       }
       console.log('[CatanCounter] corrected resources for', name, ':', trackedRes, '→', domRes);
     }

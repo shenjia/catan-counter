@@ -1,5 +1,7 @@
 # Catan Counter
 
+![Screenshot](screenshot.png)
+
 A Chrome extension that tracks opponents' resources in real-time during [Colonist.io](https://colonist.io/) games.
 
 ## Features
