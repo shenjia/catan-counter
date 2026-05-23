@@ -24,12 +24,14 @@
     panel: null,
     observer: null,
     imageUrls: {},
+    longestRoadHolder: null,
+    largestArmyHolder: null,
   };
 
   function createPlayerState() {
     const resources = {};
     for (const r of RESOURCES) resources[r] = 0;
-    return { resources, devCards: 0, unknownResources: 0, avatar: '', vp: 0, army: 0, road: 0, color: '', active: false };
+    return { resources, devCards: 0, unknownResources: 0, avatar: '', vp: 0, army: 0, road: 0, color: '', active: false, domRow: null };
   }
 
   function addPlayer(name) {
@@ -197,12 +199,14 @@
     const lower = text.toLowerCase();
 
     // --- Ignore non-resource messages early ---
-    if (lower.includes('rolled')) return;
     if (lower.includes('placed a settlement') || lower.includes('placed a road')) return;
     if (lower.includes('placed a city')) return;
     if (lower.includes('game started')) return;
 
     const resources = extractResourcesFromHTML(html);
+
+    // Rolled messages only matter if they contain resource cards in HTML
+    if (lower.includes('rolled') && resources.length === 0) return;
 
     if (resources.length === 0) {
       for (const res of RESOURCES) {
@@ -256,6 +260,16 @@
         state.players.get(playerName).devCards++;
       }
       return;
+    }
+
+    // --- Achievement tracking ---
+    if (lower.includes('longest road')) {
+      state.longestRoadHolder = playerName;
+      console.log('[CatanCounter] → longest road holder:', playerName);
+    }
+    if (lower.includes('largest army')) {
+      state.largestArmyHolder = playerName;
+      console.log('[CatanCounter] → largest army holder:', playerName);
     }
 
     // --- Used dev card ---
@@ -404,7 +418,7 @@
 
       if (deduced) {
         console.log('[CatanCounter] → deduced steal:', deduced, 'from', victimName);
-        if (isTracked(stealerName)) addUnknown(stealerName, 1);
+        if (isTracked(stealerName)) addRes(stealerName, deduced);
         removeRes(victimName, deduced);
       } else {
         console.log('[CatanCounter] → unknown steal:', stealerName, 'from', victimName || '?');
@@ -523,6 +537,8 @@
       const colorAttr = row.getAttribute('data-player-color');
       if (colorAttr) p.color = colorAttr;
 
+      p.domRow = row;
+
       const vpEl = row.querySelector('[class*="victoryPoints"]');
       if (vpEl) p.vp = parseInt(vpEl.textContent) || 0;
 
@@ -572,19 +588,25 @@
     const trackedRes = RESOURCES.reduce((sum, r) => sum + p.resources[r], 0) + p.unknownResources;
     const trackedDev = p.devCards;
 
-    // Correct resource count — only adjust when we overcounted (DOM < tracked)
-    // Undercounting (DOM > tracked) is handled by feed message parsing
-    if (domRes >= 0 && trackedRes > domRes) {
-      let toRemove = trackedRes - domRes;
-      while (toRemove > 0 && p.unknownResources > 0) { p.unknownResources--; toRemove--; }
-      while (toRemove > 0) {
-        let best = null, bestCount = 0;
-        for (const r of RESOURCES) {
-          if (p.resources[r] > bestCount) { best = r; bestCount = p.resources[r]; }
+    // Correct resource count
+    if (domRes >= 0 && domRes !== trackedRes) {
+      const diff = domRes - trackedRes;
+      if (diff > 0) {
+        // DOM shows more cards — fill gap with unknowns
+        p.unknownResources += diff;
+      } else {
+        // We overcounted — remove from unknowns first, then known
+        let toRemove = -diff;
+        while (toRemove > 0 && p.unknownResources > 0) { p.unknownResources--; toRemove--; }
+        while (toRemove > 0) {
+          let best = null, bestCount = 0;
+          for (const r of RESOURCES) {
+            if (p.resources[r] > bestCount) { best = r; bestCount = p.resources[r]; }
+          }
+          if (!best) break;
+          p.resources[best]--;
+          toRemove--;
         }
-        if (!best) break;
-        p.resources[best]--;
-        toRemove--;
       }
       console.log('[CatanCounter] corrected resources for', name, ':', trackedRes, '→', domRes);
     }
@@ -613,7 +635,7 @@
         position: fixed;
         top: 0;
         left: 0;
-        z-index: 99999;
+        z-index: 0;
         background: rgba(245, 230, 200, 0.95);
         border: 2px solid #C9A96E;
         border-radius: 8px;
@@ -676,6 +698,10 @@
 
       .achievement.gold {
         color: #B8860B;
+      }
+
+      .achievement.dim {
+        color: #BFB5A5;
       }
 
       .player-body {
@@ -927,16 +953,18 @@
       const achievements = document.createElement('div');
       achievements.className = 'player-achievements';
 
-      const armyIcon = p.army >= 3 ? ARMY_ICON_GOLD : ARMY_ICON;
+      const armyHolder = state.largestArmyHolder === name;
+      const armyIcon = armyHolder ? ARMY_ICON_GOLD : ARMY_ICON;
       const armyStat = document.createElement('span');
-      armyStat.className = 'achievement' + (p.army >= 3 ? ' gold' : '');
+      armyStat.className = 'achievement' + (armyHolder ? ' gold' : ' dim');
       armyStat.innerHTML = '<img src="' + armyIcon + '">';
       armyStat.appendChild(document.createTextNode(p.army));
       achievements.appendChild(armyStat);
 
-      const roadIcon = p.road >= 5 ? ROAD_ICON_GOLD : ROAD_ICON;
+      const roadHolder = state.longestRoadHolder === name;
+      const roadIcon = roadHolder ? ROAD_ICON_GOLD : ROAD_ICON;
       const roadStat = document.createElement('span');
-      roadStat.className = 'achievement' + (p.road >= 5 ? ' gold' : '');
+      roadStat.className = 'achievement' + (roadHolder ? ' gold' : ' dim');
       roadStat.innerHTML = '<img src="' + roadIcon + '">';
       roadStat.appendChild(document.createTextNode(p.road));
       achievements.appendChild(roadStat);
@@ -959,6 +987,13 @@
         avatar.draggable = false;
         const glow = PLAYER_GLOWS[p.color];
         if (glow) avatar.style.background = glow;
+        avatar.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (p.domRow) {
+            const btn = p.domRow.querySelector('[class*="menuButton"]');
+            if (btn) btn.click();
+          }
+        });
         leftCol.appendChild(avatar);
       }
 
