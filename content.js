@@ -1,6 +1,22 @@
 (function () {
   'use strict';
 
+  // ======================== Ad Remover ========================
+
+  const adClasses = ['in_game_ad_right', 'in_game_ad_left'];
+  const adObserver = new MutationObserver((mutations) => {
+    for (const cls of adClasses) {
+      const el = document.querySelector('.' + cls);
+      if (el) el.remove();
+    }
+  });
+  adObserver.observe(document.documentElement, { childList: true, subtree: true });
+  // Also remove any already present
+  for (const cls of adClasses) {
+    const el = document.querySelector('.' + cls);
+    if (el) el.remove();
+  }
+
   // ======================== Constants ========================
 
   const RESOURCES = ['lumber', 'brick', 'wool', 'grain', 'ore'];
@@ -521,7 +537,7 @@
     '6': 'radial-gradient(circle at 50% 50%, #c17dd4 0%, #b06ac6 17%, #9a56b5 40%, #7e42a0 65%, #622f88 86%, #fff 89% 92%, #3a1760 96%)',
   };
 
-  function scanPlayerInfo() {
+  function scanPlayerInfo(withCardCorrection) {
     // Opponents
     const oppRows = document.querySelectorAll('[class*="opponentPlayerRow"]');
     for (const row of oppRows) {
@@ -551,7 +567,7 @@
       p.active = infoWrapper ? infoWrapper.className.includes('active') : false;
 
       // Correct resource/dev card counts from DOM
-      correctCardCounts(row, name, p);
+      if (withCardCorrection) correctCardCounts(row, name, p);
     }
 
     // Current user
@@ -916,13 +932,13 @@
     panelEl.style.right = 'auto';
   }
 
-  function updatePanel() {
+  function updatePanel(withCardCorrection) {
     if (!state.panel) return;
     const panel = state.panel.panel;
     panel.innerHTML = '';
 
     // Scan DOM for latest player info (VP, army, road, avatar)
-    scanPlayerInfo();
+    scanPlayerInfo(!!withCardCorrection);
 
     const ARMY_ICON = 'https://cdn.colonist.io/dist/assets/icon_largest_army.206b49b3c9d2b206f699.svg';
     const ARMY_ICON_GOLD = 'https://cdn.colonist.io/dist/assets/icon_largest_army_highlight.be615b163db0dbd64fbc.svg';
@@ -1193,7 +1209,7 @@
       state.messageCache.set(idx, data);
       parseMessage(data.playerName, data.text, data.html);
     }
-    updatePanel();
+    updatePanel(true);
   }
 
   function startObserver() {

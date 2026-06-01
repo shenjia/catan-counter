@@ -11,6 +11,7 @@ A Chrome extension that tracks opponents' resources in real-time during [Colonis
 - **Smart deduction** — Infers unknown cards when resource type is hidden (e.g. steals between other players), and resolves unknowns when players make trade offers
 - **Game info overlay** — Shows player avatars, victory points, largest army, and longest road directly in the panel
 - **Auto-correction** — Syncs tracked card totals with the game's displayed counts to minimize drift
+- **Ad blocker** — Automatically removes in-game ads in real-time
 
 ### Tracked Events
 
