@@ -603,8 +603,12 @@
     }
   }
 
-  // Compare tracked totals with DOM card counts and correct discrepancies
+  // Compare tracked totals with DOM card counts and correct discrepancies.
+  // Runs only after the feed has been quiet for a moment: DOM counts and feed
+  // messages update as separate React commits, and correcting in between the
+  // two injects phantom "unknown" cards (e.g. on 7-roll steals).
   function correctCardCounts(rowEl, name, p) {
+    if (Date.now() - (state.lastFeedActivity || 0) < 1200) return;
     const resCardEl = rowEl.querySelector('[data-resource-card] [class*="count"]');
     const devCardEl = rowEl.querySelector('[data-development-card] [class*="count"]');
 
@@ -1186,23 +1190,29 @@
     const items = Array.from(scroller.querySelectorAll('[data-index]'));
     items.sort((a, b) => parseInt(a.getAttribute('data-index')) - parseInt(b.getAttribute('data-index')));
 
-    let cutoff = -1;
+    // Fingerprint check: virtualizer indices must be stable across mounts.
+    // If a cached index now maps to different text, indices shifted (log truncated
+    // upstream) → rebuild cache from currently mounted items to avoid stale replay.
+    let shifted = false;
     for (const item of items) {
+      const idx = item.getAttribute('data-index');
+      const cached = state.messageCache.get(idx);
+      if (!cached) continue;
       const feedEl = item.querySelector('[class*="feedMessage"]');
-      if (feedEl && isOpaque(feedEl)) {
-        const idx = parseInt(item.getAttribute('data-index'));
-        if (idx > cutoff) cutoff = idx;
+      const text = feedEl ? feedEl.textContent.trim() : null;
+      if (text !== null && text !== cached.text) { shifted = true; break; }
+    }
+    if (shifted) {
+      console.log('[CatanCounter] feed indices shifted — rebuilding cache');
+      state.messageCache.clear();
+      for (const [, p] of state.players) {
+        for (const r of RESOURCES) p.resources[r] = 0;
+        p.devCards = 0;
+        p.unknownResources = 0;
       }
     }
 
-    if (cutoff >= 0) {
-      let trimmed = false;
-      for (const key of [...state.messageCache.keys()]) {
-        if (parseInt(key) > cutoff) { state.messageCache.delete(key); trimmed = true; }
-      }
-      if (trimmed) recomputeFromCache();
-    }
-
+    let appended = false;
     for (const item of items) {
       const idx = item.getAttribute('data-index');
       if (state.messageCache.has(idx)) continue;
@@ -1219,8 +1229,10 @@
 
       const data = { playerName, text: feedEl.textContent.trim(), html: feedEl.innerHTML };
       state.messageCache.set(idx, data);
+      appended = true;
       parseMessage(data.playerName, data.text, data.html);
     }
+    if (appended) state.lastFeedActivity = Date.now();
     updatePanel(true);
   }
 

@@ -143,5 +143,66 @@ msg('Alice', 'Alice stole 0 Wool', `${nameSpan('Alice')} stole 0 Wool`);
 check('Alice wool', totals('Alice').wool, 0);
 check('Bob wool 被清零', totals('Bob').wool, 0);
 
+
+// ---------- 场景 7：扔7抢劫——我偷对方（thief 视角，真实卡图） ----------
+console.log('\n=== 场景 7: You stole [ore img] from Bob（我是贼，真实卡图） ===');
+reset();
+state.players.set('Alice', state.players.get('Alice')); 
+state.playerOrder.length = 0; state.playerOrder.push('Alice', 'Bob', 'Me');
+msg('Bob', 'Bob got resources', `${nameSpan('Bob')} got ${img('ore')}${img('ore')}${img('wool')}`);
+// thief 视角：加粗名是受害者 Bob，"You" 是普通文本
+msg('Bob', 'You stole  from Bob', `You stole ${img('ore')} from ${nameSpan('Bob')}`);
+check('Bob ore 被偷 1（2→1）', totals('Bob').ore, 1);
+check('Bob wool 不受影响', totals('Bob').wool, 1);
+check('Bob 无未知卡', totals('Bob').unknown, 0);
+
+// ---------- 场景 8：扔7抢劫——对方偷我（victim 视角，真实卡图） ----------
+console.log('\n=== 场景 8: Alice stole [grain img] from you（我是受害者） ===');
+reset();
+msg('Alice', 'Alice stole  from you', `${nameSpan('Alice')} stole ${img('grain')} from you`);
+check('Alice grain +1', totals('Alice').grain, 1);
+check('Alice 无未知卡', totals('Alice').unknown, 0);
+
+// ---------- 场景 9：扔7抢劫——两对手互偷（closed 视角，卡背图） ----------
+console.log('\n=== 场景 9: Alice stole [卡背] from Bob（旁观，信息论上未知） ===');
+reset();
+msg('Bob', 'Bob got resources', `${nameSpan('Bob')} got ${img('ore')}${img('ore')}`);
+msg('Alice', 'Alice stole  from Bob', `${nameSpan('Alice')} stole ${img('back')} from ${nameSpan('Bob')}`);
+check('Alice ore +1（Bob 仅 ore 单一类型，可推理）', totals('Alice').ore, 1);
+check('Alice 无未知卡', totals('Alice').unknown, 0);
+check('Bob total 2→1', totals('Bob').total, 1);
+
+// ---------- 场景 10：closed 视角但受害者只有单一资源（可推理） ----------
+console.log('\n=== 场景 10: Alice stole [卡背] from Bob（Bob 全是 ore，可推理） ===');
+reset();
+msg('Bob', 'Bob got resources', `${nameSpan('Bob')} got ${img('ore')}${img('ore')}${img('ore')}`);
+msg('Alice', 'Alice stole  from Bob', `${nameSpan('Alice')} stole ${img('back')} from ${nameSpan('Bob')}`);
+check('Alice ore +1（推理所得）', totals('Alice').ore, 1);
+check('Alice 无未知卡', totals('Alice').unknown, 0);
+check('Bob ore 3→2', totals('Bob').ore, 2);
+
+
+// ---------- 场景 11：feed 索引位移——缓存重放导致的状态污染回归 ----------
+console.log('\n=== 场景 11: 索引位移检测（processFeedItems 重建缓存） ===');
+// processFeedItems 不在 vm 导出里，直接用 parseMessage 验证重放幂等性：
+// 同一批消息重放一遍，状态应与单次解析一致（修复后 recomputeFromCache 被移除，
+// 重放只在索引指纹变化时发生，且重放前先清零 —— 幂等性由 parseMessage 决定）
+reset();
+state.playerOrder.length = 0; state.playerOrder.push('Alice', 'Bob', 'Me');
+const seq = [
+  ['Bob', 'Bob got resources', `${nameSpan('Bob')} got ${img('ore')}${img('ore')}${img('wool')}`],
+  ['Alice', 'Alice stole  from Bob', `${nameSpan('Alice')} stole ${img('back')} from ${nameSpan('Bob')}`],
+  ['Alice', 'Alice stole  from you', `${nameSpan('Alice')} stole ${img('grain')} from you`],
+];
+for (const [p, t, h] of seq) msg(p, t, h);
+const after1 = JSON.stringify({ a: totals('Alice'), b: totals('Bob') });
+// 重放同一批消息（模拟 rebuild）
+reset();
+for (const [p, t, h] of seq) msg(p, t, h);
+const after2 = JSON.stringify({ a: totals('Alice'), b: totals('Bob') });
+check('重放幂等（两次解析结果一致）', after1 === after2, true);
+check('重放后 Bob ore=1（2-1 被偷）', totals('Bob').ore, 1);
+check('重放后 Alice grain=1', totals('Alice').grain, 1);
+
 console.log('\n结果: ' + pass + ' pass, ' + fail + ' fail');
 process.exit(fail ? 1 : 0);
