@@ -188,6 +188,17 @@
     return found;
   }
 
+  // Extract resources from plain text with word boundaries
+  // (avoids false matches inside player names, e.g. "Corey" containing "ore")
+  function extractResourcesFromText(text) {
+    const found = [];
+    for (const res of RESOURCES) {
+      const regex = new RegExp('\\b' + res + '\\b', 'gi');
+      while (regex.exec(text)) found.push(res);
+    }
+    return found;
+  }
+
   function getPlayerName(feedEl) {
     const spans = feedEl.querySelectorAll('span');
     for (const s of spans) {
@@ -225,9 +236,9 @@
     if (lower.includes('rolled') && resources.length === 0) return;
 
     if (resources.length === 0) {
-      for (const res of RESOURCES) {
-        if (lower.includes(res)) resources.push(res);
-      }
+      // Plain-text fallback (e.g. monopoly result "stole 4 Ore" has no card images);
+      // word-boundary matching prevents false hits inside player names (e.g. Corey → ore)
+      resources.push(...extractResourcesFromText(text));
     }
 
     console.log('[CatanCounter]', playerName, '|', text.substring(0, 80), '| res:', resources.join(','));
@@ -340,16 +351,19 @@
     // --- Monopoly result (no "from") ---
     if (lower.includes('stole') && !lower.includes('from')) {
       if (resources.length > 0) {
+        // Monopoly targets a single resource type; amount comes from "stole N"
+        // text when present, otherwise from the number of card icons
+        const target = resources[0];
         const countMatch = lower.match(/stole\s+(\d+)/);
-        const count = countMatch ? parseInt(countMatch[1]) : 1;
+        const count = countMatch ? parseInt(countMatch[1]) : resources.length;
         if (isTracked(playerName)) {
-          console.log('[CatanCounter] → monopoly result:', playerName, count, resources.join(','));
-          resources.forEach(r => addRes(playerName, r, count));
+          console.log('[CatanCounter] → monopoly result:', playerName, count, target);
+          if (count > 0) addRes(playerName, target, count);
         }
         // Remove that resource from all other tracked players
         for (const [otherName, otherP] of state.players) {
           if (otherName !== playerName && isTracked(otherName)) {
-            resources.forEach(r => { otherP.resources[r] = 0; });
+            otherP.resources[target] = 0;
           }
         }
       }
@@ -504,11 +518,9 @@
   }
 
   function handleMonopoly(playerName, text, resources) {
-    const lower = text.toLowerCase();
     let target = null;
-    for (const res of RESOURCES) {
-      if (lower.includes(res)) { target = res; break; }
-    }
+    const textResources = extractResourcesFromText(text);
+    if (textResources.length > 0) target = textResources[0];
     if (!target && resources.length > 0) target = resources[0];
     if (!target) return;
 
